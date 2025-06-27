@@ -40,21 +40,16 @@ Deploy or validate an Argo CD application using Git or Helm sources. This CloudB
 
 == Example Usage
 
-- name: Deploy via Argo CD
-  uses: ./path/to/argocd-application-deploy
-  with:
-    serverurl: https://argocd.example.com
-    user: admin
-    credential: ${{ secrets.ARGOCD_PASSWORD }}
-    projectname: example-project
-    applicationname: my-app
-    repourl: https://github.com/myorg/myrepo.git
-    targetrevision: main
-    repopath: apps/my-app
-    destnamespace: default
-    deploytype: git
-    dryrun: false
-    debug: true
+argocd app create payments-api \
+  --repo https://github.com/myorg/payments-api.git \
+  --path deployments/overlays/prod \
+  --dest-server https://kubernetes.default.svc \
+  --dest-namespace prod \
+  --project my-project \
+  --sync-policy automated \
+  --self-heal \
+  --auto-prune \
+  --upsert
 
 == Dry-Run Mode
 
