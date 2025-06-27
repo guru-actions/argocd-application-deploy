@@ -74,10 +74,3 @@ If debug: true, the shell script will output verbose command traces (set -x). Us
 	•	For Helm sources, chartname must be provided.
 	•	The Argo CD application will be created or updated (upsert=true) with automated sync enabled (including prune and selfHeal).
 
-== Development
-
-The included setup.sh is a helper script for local testing. It is not required for CloudBees platform usage.
-
-== License
-
-MIT (or include your license details here)
