@@ -1,0 +1,160 @@
+---
+apiVersion: automation.cloudbees.io/v1alpha1
+kind: action
+name: argocd-application-deploy
+description: Deploys an Argo CD application from Git or Helm, with optional dry-run support
+
+inputs:
+  serverurl:
+    description: Argo CD server URL
+    required: true
+  user:
+    description: Argo CD username
+    required: true
+  credential:
+    description: Argo CD password or token
+    required: true
+  projectname:
+    description: Argo CD project name
+    required: true
+  applicationname:
+    description: Argo CD application name
+    required: true
+  repourl:
+    description: Git or Helm repo URL
+    required: true
+  targetrevision:
+    description: Git branch, tag, or commit (or chart version for Helm)
+    required: true
+  repopath:
+    description: Path within the Git repo (for Git source)
+    required: false
+  destnamespace:
+    description: Kubernetes namespace for deployment
+    required: true
+  chartname:
+    description: Helm chart name (for Helm source)
+    required: false
+  deploytype:
+    description: Source type: "git" or "helm"
+    required: true
+  debug:
+    description: Enable verbose logging
+    required: false
+    default: "false"
+  dryrun:
+    description: Run in dry-run (diff) mode only
+    required: false
+    default: "false"
+  poll_time:
+    description: Unused; reserved for future use
+    required: false
+    default: "2"
+
+outputs:
+  sync_status:
+    description: Sync status result from Argo CD API
+  application_url:
+    description: Direct link to the Argo CD application UI
+
+runs:
+  using: composite
+  steps:
+    - id: deploy
+      name: Deploy or validate Argo CD application
+      uses: docker://gururepservice/argocd:latest
+      shell: sh
+      run: |
+        #!/bin/bash
+
+        set -e
+        if [[ "${{ inputs.debug }}" == "true" ]]; then
+          set -x
+        fi
+
+        # Input validation
+        if [[ "${{ inputs.deploytype }}" == "helm" && -z "${{ inputs.chartname }}" ]]; then
+          echo "Error: chartname must be specified for Helm deployments" >&2
+          exit 1
+        fi
+
+        if [[ "${{ inputs.deploytype }}" == "git" && -z "${{ inputs.repopath }}" ]]; then
+          echo "Error: repopath must be specified for Git deployments" >&2
+          exit 1
+        fi
+
+        # Input vars
+        ARGOCD_SERVER="${{ inputs.serverurl }}"
+        USERNAME="${{ inputs.user }}"
+        PASSWORD="${{ inputs.credential }}"
+        PROJECT_NAME="${{ inputs.projectname }}"
+        APP_NAME="${{ inputs.applicationname }}"
+        REPO_URL="${{ inputs.repourl }}"
+        TARGET_REVISION="${{ inputs.targetrevision }}"
+        DEST_NAMESPACE="${{ inputs.destnamespace }}"
+        REPO_PATH="${{ inputs.repopath }}"
+        HELM_CHART="${{ inputs.chartname }}"
+        DEPLOY_TYPE="${{ inputs.deploytype }}"
+        DRYRUN="${{ inputs.dryrun }}"
+
+        echo "Authenticating to ArgoCD at $ARGOCD_SERVER"
+        SESSION_TOKEN=$(curl -s -L -k -d "{\"username\": \"$USERNAME\", \"password\": \"$PASSWORD\"}" \
+          -H "Content-Type: application/json" "$ARGOCD_SERVER/api/v1/session" | jq -r .token)
+
+        if [[ -z "$SESSION_TOKEN" || "$SESSION_TOKEN" == "null" ]]; then
+          echo "Login failed. Check your credentials." >&2
+          exit 1
+        fi
+
+        # Build payload
+        if [[ "$DEPLOY_TYPE" == "git" ]]; then
+          SRC="\"repoURL\": \"$REPO_URL\", \"path\": \"$REPO_PATH\", \"targetRevision\": \"$TARGET_REVISION\""
+        else
+          SRC="\"repoURL\": \"$REPO_URL\", \"chart\": \"$HELM_CHART\", \"targetRevision\": \"$TARGET_REVISION\""
+        fi
+
+        PAYLOAD=$(cat <<EOF
+        {
+          "metadata": {
+            "name": "$APP_NAME"
+          },
+          "spec": {
+            "source": { $SRC },
+            "destination": {
+              "server": "https://kubernetes.default.svc",
+              "namespace": "$DEST_NAMESPACE"
+            },
+            "project": "$PROJECT_NAME",
+            "syncPolicy": {
+              "automated": {
+                "prune": true,
+                "selfHeal": true
+              }
+            }
+          }
+        }
+EOF
+        )
+
+        if [[ "$DRYRUN" == "true" ]]; then
+          echo "Performing dry-run (diff) for application: $APP_NAME"
+          curl -s -k -X POST "$ARGOCD_SERVER/api/v1/applications/$APP_NAME/diff" \
+            -H "Content-Type: application/json" --cookie "argocd.token=$SESSION_TOKEN" | jq .
+          exit 0
+        fi
+
+        echo "Creating or updating ArgoCD application: $APP_NAME"
+        response=$(curl -s -o response.txt -w "%{response_code}" -k -X POST \
+          -H "Content-Type: application/json" --data "$PAYLOAD" \
+          "$ARGOCD_SERVER/api/v1/applications?upsert=true" --cookie "argocd.token=$SESSION_TOKEN")
+
+        if [[ "$response" != "200" && "$response" != "201" ]]; then
+          echo "Application creation failed with HTTP $response"
+          cat response.txt >&2
+          exit 1
+        fi
+
+        echo "Application created successfully."
+        echo "::set-output name=sync_status::success"
+        echo "::set-output name=application_url::$ARGOCD_SERVER/applications/$APP_NAME"
+

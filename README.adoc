@@ -1,0 +1,83 @@
+= argocd-application-deploy
+
+Deploy or validate an Argo CD application using Git or Helm sources. This CloudBees custom action authenticates to an Argo CD instance, creates or updates an application, and optionally supports dry-run mode for validation.
+
+== Features
+	•	Supports Git and Helm as sources
+	•	Optionally performs a dry-run (diff) instead of applying
+	•	Outputs Argo CD sync status and application UI link
+	•	Basic input validation and optional debug logging
+
+== Inputs
+
+|===
+| Name | Required | Description
+
+| serverurl       | Yes | Argo CD server URL (e.g., https://argocd.example.com)
+| user            | Yes | Username for Argo CD login
+| credential      | Yes | Password or API token for Argo CD login
+| projectname     | Yes | Name of the Argo CD project
+| applicationname | Yes | Name of the Argo CD application
+| repourl         | Yes | Git or Helm repository URL
+| targetrevision  | Yes | Git branch/tag or Helm chart version
+| repopath        | No  | Path in the Git repository (required for Git sources)
+| chartname       | No  | Helm chart name (required for Helm sources)
+| destnamespace   | Yes | Kubernetes namespace for deployment
+| deploytype      | Yes | Must be either git or helm
+| dryrun          | No  | If true, performs a diff and exits (default: false)
+| debug           | No  | If true, enables verbose shell logging
+| poll_time       | No  | Reserved for future use (default: 2)
+|===
+
+== Outputs
+
+|===
+| Name | Description
+
+| sync_status | Returns success if the application was created or updated
+| application_url | Direct URL to view the application in Argo CD UI
+|===
+
+== Example Usage
+
+- name: Deploy via Argo CD
+  uses: ./path/to/argocd-application-deploy
+  with:
+    serverurl: https://argocd.example.com
+    user: admin
+    credential: ${{ secrets.ARGOCD_PASSWORD }}
+    projectname: example-project
+    applicationname: my-app
+    repourl: https://github.com/myorg/myrepo.git
+    targetrevision: main
+    repopath: apps/my-app
+    destnamespace: default
+    deploytype: git
+    dryrun: false
+    debug: true
+
+== Dry-Run Mode
+
+If you set dryrun: true, the action will:
+	•	Authenticate to Argo CD
+	•	Run an Argo CD diff (dry-run) for the specified application
+	•	Exit without applying any changes
+
+This is useful for validating updates or verifying if anything would change.
+
+== Debug Mode
+
+If debug: true, the shell script will output verbose command traces (set -x). Use this when troubleshooting the action.
+
+== Notes
+	•	For Git sources, repopath is mandatory.
+	•	For Helm sources, chartname must be provided.
+	•	The Argo CD application will be created or updated (upsert=true) with automated sync enabled (including prune and selfHeal).
+
+== Development
+
+The included setup.sh is a helper script for local testing. It is not required for CloudBees platform usage.
+
+== License
+
+MIT (or include your license details here)
