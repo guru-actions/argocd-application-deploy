@@ -35,7 +35,7 @@ Deploy or validate an Argo CD application using Git or Helm sources. This CloudB
 | `sync_status`     | Returns `success` if the application was created or updated        |
 | `application_url` | Direct URL to view the application in Argo CD UI                  |
 
-## Example Usage (GitHub Action)
+## Example Usage (CloudBees Action)
 
 ```yaml
 - name: Deploy via Argo CD
